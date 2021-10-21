@@ -3,10 +3,16 @@ Implémentation en Python de l'algorithme de stabilisation du gradient bi-conjug
 https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.sparse.linalg.bicgstab.html
 
 """
-
+import numpy as np
+import time
+import sys
+import petsc4py
+petsc4py.init(sys.argv)
 from numpy import array, inner, conjugate, ravel, diag
 from pyamg.util.linalg import norm
 from scipy.sparse.linalg.isolve.utils import make_system
+from mpi4py import MPI
+from petsc4py import PETSc
 
 class BiCGSTAB:
     def __init__(self,**kwargs):
@@ -24,7 +30,7 @@ class BiCGSTAB:
             b : {array, matrix}
                 "Right Hand" du système linéaire
             x_init : {array, matrix}
-                Supposition de départ pour la solution (initialement a None)
+                Supposition de départ pour la solution (initialement un vecteur de zéro)
             it_max : int
                 Maximum d'itérations (initialement a None)
             tol : float
@@ -50,7 +56,6 @@ class BiCGSTAB:
         """
 
         # Convert inputs to linear system
-        # DOESN'T WORK
         (A, prec_A, x, b, postprocess) = make_system(A, prec_A, x_init, b)
 
         # Check iteration numbers
@@ -166,25 +171,14 @@ class BiCGSTAB:
         pass
 
 if __name__ == '__main__':
-    # %timeit -n 15 (x,flag) = bicgstab(A,b,x0,tol=1e-8,maxiter=100)
-    from pyamg.gallery import stencil_grid
-    from numpy.random import random
-    import numpy as np
-    import time
-    from scipy.sparse.linalg.isolve import bicgstab as ibicgstab
     from pyamg.gallery import poisson
-
-    # A = random((4,4))
-    # A = A*A.transpose() + diag([10,10,10,10])
-    # b = random((4,1))
-    # x0 = random((4,1))
 
     A = poisson((10,10))
     b = np.ones((A.shape[0],))
-    # x0 = np.ones((A.shape[0],))
 
-    print(A.shape,A.ndim,b)
     print('\nTesting BiCGStab with %d x %d 2D Laplace Matrix\n'%(A.shape[0],A.shape[0]))
+
+    # Hugo
     t1=time.time()
     (x,flag) = BiCGSTAB.solve(A=A,b=b,x_init=None,tol=1e-8,it_max=100)
     t2=time.time()
@@ -192,9 +186,37 @@ if __name__ == '__main__':
     print('norm = %g'%(norm(b - A*x)))
     print('info flag = %d'%(flag))
 
+    # PETSc
+    n = 32
+    # grid spacing
+    h = 1.0/(n+1)
+    A = PETSc.Mat().create()
+    A.setSizes([n**2, n**2])
+    A.setType('python')
+    # shell = Del2Mat(n) # shell context
+    # A.setPythonContext(shell)
+    A.setUp()
+
+    x_ksp = np.ones((A.shape[0],))
+
+    ksp = PETSc.KSP().create()
+    ksp.setType('bcgs')
+
+    prec = ksp.getPC()
+    prec.setType('none')
+
+    ksp.setOperators(A)
+    ksp.setFromOptions()
+
     t1=time.time()
-    (y,flag) = ibicgstab(A=A,b=b,tol=1e-8,maxiter=100)
+    ksp.solve(b, x_ksp)
     t2=time.time()
-    print('\n%s took %0.3f ms' % ('linalg bicgstab', (t2-t1)*1000.0))
-    print('norm = %g'%(norm(b - A*y)))
-    print('info flag = %d'%(flag))
+    print('%s took %0.3f ms' % ('bicgstab', (t2-t1)*1000.0))
+    print('norm = %g'%(norm(b - A*x)))
+
+    # t1=time.time()
+    # (y,flag) = bicgstab_PETSc(A=A,b=b,tol=1e-8,maxiter=100)
+    # t2=time.time()
+    # print('\n%s took %0.3f ms' % ('linalg bicgstab', (t2-t1)*1000.0))
+    # print('norm = %g'%(norm(b - A*y)))
+    # print('info flag = %d'%(flag))
