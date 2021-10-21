@@ -4,14 +4,15 @@ https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.sparse.linalg.
 
 """
 
-from numpy import array, inner, conjugate, ravel
+from numpy import array, inner, conjugate, ravel, diag
 from pyamg.util.linalg import norm
+from scipy.sparse.linalg.isolve.utils import make_system
 
 class BiCGSTAB:
     def __init__(self,**kwargs):
         pass
 
-    def solve(self,A, b, x_init=None, it_max=None, tol=1e-5, prec_A=None, callback=None, residuals=None, xtype=None):
+    def solve(A, b, x_init=None, it_max=None, tol=1e-5, prec_A=None, callback=None, residuals=None, xtype=None):
         """
         Résolution de systèmes linéaires non symétriques avec la résolution par la droite (right_hand => vector numpy array).
         =======================
@@ -49,11 +50,12 @@ class BiCGSTAB:
         """
 
         # Convert inputs to linear system
-        A,prec_A,x_init,b,postprocess = make_system(A,prec_A,x_init,b,xtype)
+        # DOESN'T WORK
+        (A, prec_A, x, b, postprocess) = make_system(A, prec_A, x_init, b)
 
         # Check iteration numbers
         if it_max == None:
-            it_max = len(x_init) + 5
+            it_max = len(x) + 5
         elif it_max < 1:
             raise ValueError('Number of iterations must be positive')
 
@@ -74,7 +76,7 @@ class BiCGSTAB:
 
         # Stopping condition
         if normr < tol*normb:
-            return (postprocess(x_init),0)
+            return ((x_init),0)
 
         # Raise  tol if norm r isn't small
         if normr != 0.0:
@@ -84,7 +86,7 @@ class BiCGSTAB:
         # ravel => A 1-D array, containing the elements of the input, is returned.
         if A.shape[0] == 1:
             entry = ravel(A*array([1.0], dtype=xtype))
-            return (postprocess(b/entry), 0)
+            return ((b/entry), 0)
 
         # simple copy of r
         rstar = r.copy()
@@ -110,10 +112,10 @@ class BiCGSTAB:
                 matrix_p = p
                 pass
 
-            # alpha = (r_iter, rstar) / (A*p_iter, rstar)
+            # alpha = (r_{iter}, rstar) / (A*p_{iter}, rstar)
             alpha = delta/inner(rstar.conjugate(), A_matrix_p)
 
-            # s_iter = r_iter - alpha*A*p_iter
+            # s_{iter} = r_{iter} - alpha*A*p_{iter}
             s   = r - alpha*A_matrix_p
 
             # Init preconditioner
@@ -126,21 +128,21 @@ class BiCGSTAB:
                 matrix_s = s
                 pass
 
-            # omega = (A*s_iter, s_iter)/(A*s_iter, A*s_iter)
+            # omega = (A*s_{iter}, s_{iter})/(A*s_{iter}, A*s_{iter})
             omega = inner(A_matrix_s.conjugate(), s)/inner(A_matrix_s.conjugate(), A_matrix_s)
 
-            # x_{iter+1} = x_iter +  alpha*p_iter + omega*s_iter
+            # x_{iter+1} = x_{iter} +  alpha*p_{iter} + omega*s_{iter}
             x = x + alpha*matrix_p + omega*matrix_s
 
-            # r_{iter+1} = s_iter - omega*A*s
+            # r_{iter+1} = s_{iter} - omega*A*s
             r = s - omega*A_matrix_s
 
-            # beta_iter = (r_{iter+1}, rstar)/(r_iter, rstar) * (alpha/omega)
+            # beta_{iter} = (r_{iter+1}, rstar)/(r_{iter}, rstar) * (alpha/omega)
             delta_new = inner(rstar.conjugate(), r)
             beta = (delta_new / delta) * (alpha / omega)
             delta = delta_new
 
-            # p_{iter+1} = r_{iter+1} + beta*(p_iter - omega*A*p)
+            # p_{iter+1} = r_{iter+1} + beta*(p_{iter} - omega*A*p)
             p = r + beta*(p - omega*A_matrix_p)
 
             iter += 1
@@ -155,10 +157,44 @@ class BiCGSTAB:
                 callback(x)
 
             if normr < tol:
-                return (postprocess(x), 0)
+                return ((x), 0)
 
-            if iter == maxiter:
-                return (postprocess(x), iter)
+            if iter == it_max:
+                return ((x), iter)
 
             pass
         pass
+
+if __name__ == '__main__':
+    # %timeit -n 15 (x,flag) = bicgstab(A,b,x0,tol=1e-8,maxiter=100)
+    from pyamg.gallery import stencil_grid
+    from numpy.random import random
+    import numpy as np
+    import time
+    from scipy.sparse.linalg.isolve import bicgstab as ibicgstab
+    from pyamg.gallery import poisson
+
+    # A = random((4,4))
+    # A = A*A.transpose() + diag([10,10,10,10])
+    # b = random((4,1))
+    # x0 = random((4,1))
+
+    A = poisson((10,10))
+    b = np.ones((A.shape[0],))
+    # x0 = np.ones((A.shape[0],))
+
+    print(A.shape,A.ndim,b)
+    print('\nTesting BiCGStab with %d x %d 2D Laplace Matrix\n'%(A.shape[0],A.shape[0]))
+    t1=time.time()
+    (x,flag) = BiCGSTAB.solve(A=A,b=b,x_init=None,tol=1e-8,it_max=100)
+    t2=time.time()
+    print('%s took %0.3f ms' % ('bicgstab', (t2-t1)*1000.0))
+    print('norm = %g'%(norm(b - A*x)))
+    print('info flag = %d'%(flag))
+
+    t1=time.time()
+    (y,flag) = ibicgstab(A=A,b=b,tol=1e-8,maxiter=100)
+    t2=time.time()
+    print('\n%s took %0.3f ms' % ('linalg bicgstab', (t2-t1)*1000.0))
+    print('norm = %g'%(norm(b - A*y)))
+    print('info flag = %d'%(flag))
