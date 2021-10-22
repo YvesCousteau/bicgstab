@@ -74,7 +74,7 @@ class BiCGSTAB:
         if residuals is not None:
             residuals[:] = [normr]
 
-        # Check initial guess ( scaling by b, if b != 0, must account for case when norm(b) is very small)
+        # Check initial guess ( scalpoissoning by b, if b != 0, must account for case when norm(b) is very small)
         normb = norm(b)
         if normb == 0.0:
             normb = 1.0
@@ -186,33 +186,37 @@ if __name__ == '__main__':
     print('norm = %g'%(norm(b - A*x)))
     print('info flag = %d'%(flag))
 
-    # PETSc
-    n = 32
-    # grid spacing
-    h = 1.0/(n+1)
-    A = PETSc.Mat().create()
-    A.setSizes([n**2, n**2])
-    A.setType('python')
-    # shell = Del2Mat(n) # shell context
-    # A.setPythonContext(shell)
-    A.setUp()
-
-    x_ksp = np.ones((A.shape[0],))
-
-    ksp = PETSc.KSP().create()
-    ksp.setType('bcgs')
-
-    prec = ksp.getPC()
-    prec.setType('none')
-
-    ksp.setOperators(A)
-    ksp.setFromOptions()
-
-    t1=time.time()
-    ksp.solve(b, x_ksp)
-    t2=time.time()
-    print('%s took %0.3f ms' % ('bicgstab', (t2-t1)*1000.0))
-    print('norm = %g'%(norm(b - A*x)))
+    # # PETSc
+    # A_ = PETSc.Mat().create()
+    # A_.setSizes(A.shape)
+    # A_.setType('aij') # sparse
+    # A_.setValue(A)
+    # A_.assemblyBegin()
+    # A_.assemblyEnd()
+    # A_.setUp()
+    #
+    # x, b = A_.getVecs()
+    # # set the initial guess to 0
+    # x.set(0.0)
+    # # set the right-hand side to 1
+    # b.set(1.0)
+    #
+    # # Initialize ksp solver.
+    # ksp = PETSc.KSP().create()
+    # ksp.setType('bcgs')
+    # ksp.setOperators(A_)
+    #
+    # # Allow for solver choice to be set from command line with -ksp_type <solver>.
+    # # Recommended option: -ksp_type preonly -pc_type lu
+    # ksp.setFromOptions()
+    # print('Solving with:', ksp.getType())
+    #
+    # t1=time.time()
+    # # Solve!
+    # ksp.solve(b, x)
+    # t2=time.time()
+    # print('%s took %0.3f ms' % ('bicgstab', (t2-t1)*1000.0))
+    # print('norm = %g'%(norm(b - A_*x)))
 
     # t1=time.time()
     # (y,flag) = bicgstab_PETSc(A=A,b=b,tol=1e-8,maxiter=100)
