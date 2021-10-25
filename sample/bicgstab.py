@@ -4,12 +4,13 @@ https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.sparse.linalg.
 
 """
 import numpy as np
+# np.seterr(divide='ignore', invalid='ignore')
 import time
 import sys
 import petsc4py
 petsc4py.init(sys.argv)
-from numpy import array, inner, conjugate, ravel, diag
-from pyamg.util.linalg import norm
+from numpy import array, inner, conjugate, ravel, diag, dot
+from pyamg.util.linalg import norm, cond
 from scipy.sparse.linalg.isolve.utils import make_system
 from mpi4py import MPI
 from petsc4py import PETSc
@@ -18,7 +19,7 @@ class BiCGSTAB:
     def __init__(self,**kwargs):
         pass
 
-    def solve(A, b, x_init=None, it_max=None, tol=1e-5, prec_A=None, callback=None, residuals=None, xtype=None):
+    def solve(A, b, tol, x=None, it_max=None, prec_A=None, callback=None, residuals=None):
         """
         Résolution de systèmes linéaires non symétriques avec la résolution par la droite (right_hand => vector numpy array).
         =======================
@@ -29,7 +30,7 @@ class BiCGSTAB:
                 Matrice de systèmes linéaires à résoudre
             b : {array, matrix}
                 "Right Hand" du système linéaire
-            x_init : {array, matrix}
+            x : {array, matrix}
                 Supposition de départ pour la solution (initialement un vecteur de zéro)
             it_max : int
                 Maximum d'itérations (initialement a None)
@@ -41,73 +42,62 @@ class BiCGSTAB:
                 La fonction fournie dans le callback est appelée après chaque itération (initialement a None)
             residuals : list
                 Historique des normes résiduelles
-            xtype : dtype
-                dtype de la solution, par défaut la détection automatique du type.
         Output :
-            x_final : Solution approchée
+            x_final : solution approchée
             info : statut d'arrêt du bicgstab
+            r : résidu absolu
         -----------------------
         References
-        .. [1] Yousef Saad, "Iterative Methods for Sparse Linear Systems,
+        .. [1] Yousef Saad, "Méthodes itératives pour les systèmes linéaires "Sparse",
         Second Edition", SIAM, pp. 231-234, 2003
         http://www-users.cs.umn.edu/~saad/books.html
 
         =======================
         """
+        # Convertir les entrées en système linéaire
+        (A, prec_A, x, b, postprocess) = make_system(A, prec_A, x, b)
 
-        # Convert inputs to linear system
-        (A, prec_A, x, b, postprocess) = make_system(A, prec_A, x_init, b)
-
-        # Check iteration numbers
+        # Vérifie le nombre d'itérations
         if it_max == None:
             it_max = len(x) + 5
         elif it_max < 1:
-            raise ValueError('Number of iterations must be positive')
+            raise ValueError('Le nombre d itérations doit être positif')
 
-        # Prep for method
+        # Préparation
         r = b - A*x
-
-        # Calc the norm of r
+        # Calcule de la norme de r
         normr = norm(r)
 
-        # Set initial residuals if residuals is empty
-        if residuals is not None:
-            residuals[:] = [normr]
+        # Défini les résidus initiaux si les résidus sont vides
+        if residuals is None:
+            residuals = []
+        residuals.append(normr)
 
-        # Check initial guess ( scalpoissoning by b, if b != 0, must account for case when norm(b) is very small)
+        # Calcule et Vérifie la norme b
         normb = norm(b)
         if normb == 0.0:
             normb = 1.0
 
-        # Stopping condition
+        # Condition d'arrêt
         if normr < tol*normb:
-            return ((x_init),0)
+            return ((x),0,norm(b - A*x)/norm(b))
 
-        # Raise  tol if norm r isn't small
-        if normr != 0.0:
-            tol = tol*normr
-
-        # Check if matrix A is on 1 dimension
-        # ravel => A 1-D array, containing the elements of the input, is returned.
-        if A.shape[0] == 1:
-            entry = ravel(A*array([1.0], dtype=xtype))
-            return ((b/entry), 0)
-
-        # simple copy of r
-        rstar = r.copy()
+        # Copies de r
+        r_copy = r.copy()
         p = r.copy()
 
-        # Ordinary inner product of vectors for 1-D arrays (without complex conjugation)
-        # The complex conjugate of a complex number is obtained by changing the sign of its imaginary part
-        delta = inner(rstar.conjugate(), r)
+        # Produit interne ordinaire de vecteurs pour les tableaux 1-D (sans conjugaison complexe)
+        # Le conjugué complexe d'un nombre complexe est obtenu en changeant le signe de sa partie imaginaire
+        # Le produit d'un complexe et de son conjugué est égal au carré du module.
+        delta = inner(r_copy.conjugate(), r)
 
-        # Set iteration
+        # Configure l'itération à zéro
         iter = 0
 
-        # Loop
+        # Boucle
         while True:
 
-            # Init preconditioner
+            # Condition du préconditionneur
             if prec_A is not None:
                 A_matrix_p = A*prec_A*p
                 matrix_p = prec_A*p
@@ -117,13 +107,13 @@ class BiCGSTAB:
                 matrix_p = p
                 pass
 
-            # alpha = (r_{iter}, rstar) / (A*p_{iter}, rstar)
-            alpha = delta/inner(rstar.conjugate(), A_matrix_p)
+            # alpha = (r_{iter}, r_copy) / (A*p_{iter}, r_copy)
+            alpha = delta/inner(r_copy.conjugate(), A_matrix_p)
 
             # s_{iter} = r_{iter} - alpha*A*p_{iter}
             s   = r - alpha*A_matrix_p
 
-            # Init preconditioner
+            # Condition du préconditionneur
             if prec_A is not None:
                 A_matrix_s = A*prec_A*s
                 matrix_s = prec_A*s
@@ -142,85 +132,97 @@ class BiCGSTAB:
             # r_{iter+1} = s_{iter} - omega*A*s
             r = s - omega*A_matrix_s
 
-            # beta_{iter} = (r_{iter+1}, rstar)/(r_{iter}, rstar) * (alpha/omega)
-            delta_new = inner(rstar.conjugate(), r)
+            # beta_{iter} = (r_{iter+1}, r_copy)/(r_{iter}, r_copy) * (alpha/omega)
+            delta_new = inner(r_copy.conjugate(), r)
             beta = (delta_new / delta) * (alpha / omega)
             delta = delta_new
 
             # p_{iter+1} = r_{iter+1} + beta*(p_{iter} - omega*A*p)
             p = r + beta*(p - omega*A_matrix_p)
 
+            # +1
             iter += 1
 
+            # Calcule la nouvelle norme de r
             normr = norm(r)
 
-            # Stopping conditions
-            if residuals is not None:
-                residuals.append(normr)
+            # Ajout de la nouvelle norme de r aux résidus
+            residuals.append(normr)
 
+            # Appels des callback si ils existent
             if callback is not None:
                 callback(x)
 
+            # Condition d'arrêt
             if normr < tol:
-                return ((x), 0)
+                print('iter :',iter)
+                return ((x), 0,norm(b - A*x)/norm(b))
 
+            # Condition d'arrêt
             if iter == it_max:
-                return ((x), iter)
-
+                return ((x), iter,norm(b - A*x)/norm(b))
             pass
         pass
 
+
+# Main - test
 if __name__ == '__main__':
-    from pyamg.gallery import poisson
+    # Initialisation de la taille de notre matrice
+    n = 100
 
-    A = poisson((10,10))
-    b = np.ones((A.shape[0],))
+    # Self - Initialisations
+    # Création de la matrice de systèmes linéaires par méthode random.normal() pour obtenir une "Normal (Gaussian) Distribution".
+    P = np.random.normal(size=[n, n])
+    # Le produit d'une matrice par sa transposée est toujours une matrice symétrique
+    A = np.dot(P.T, P)
+    # Créations et Initialisations des vecteurs b et x
+    b = np.ones(n)
+    x = np.ones(n)
 
-    print('\nTesting BiCGStab with %d x %d 2D Laplace Matrix\n'%(A.shape[0],A.shape[0]))
+    # PETSc - Initialisations
+    # Création du "Right Hand Solution" vecteur b.
+    b_linalg = PETSc.Vec().createSeq(n)
+    # Création de la solution du vecteur x.
+    x_linalg = PETSc.Vec().createSeq(n)
+    # Initialisations des vecteurs b et x
+    for i in range(n):
+        b_linalg[i] = 1
+        x_linalg[i] = 1
+    # Initialisation de la Matrice de systèmes linéaires à résoudre
+    A_linalg = PETSc.Mat().create(PETSc.COMM_WORLD)
+    A_linalg.setSizes([n,n])
+    A_linalg.setType('aij')
+    A_linalg.setPreallocationNNZ(n)
+    for i in range(n):
+        for j in range(n):
+            A_linalg[i,j] = A[i,j]
+    A_linalg.assemble()
 
-    # Hugo
+    # Initialisation du ksp solver.
+    ksp = PETSc.KSP().create(PETSc.COMM_WORLD)
+    ksp.setType('bcgs')
+    ksp.setTolerances(1e-12)
+    ksp.setIterationNumber(10000)
+    ksp.setOperators(A_linalg)
+
+    # conditionnement de la Matrice de systèmes linéaires à résoudre
+    print('conditionnement =',cond(A))
+
+    # Début du test
+    print('\nTesting BiCGStab')
+
+    # Self - Test
     t1=time.time()
-    (x,flag) = BiCGSTAB.solve(A=A,b=b,x_init=None,tol=1e-8,it_max=100)
+    (x,flag,r) = BiCGSTAB.solve(A=A,b=b,tol=1e-12,x=x,it_max=10000)
     t2=time.time()
-    print('%s took %0.3f ms' % ('bicgstab', (t2-t1)*1000.0))
-    print('norm = %g'%(norm(b - A*x)))
+    print('\n%s took %0.3f ms' % ('bicgstab', (t2-t1)*1000.0))
+    print('residu absolu = %g'%r )
     print('info flag = %d'%(flag))
 
-    # # PETSc
-    # A_ = PETSc.Mat().create()
-    # A_.setSizes(A.shape)
-    # A_.setType('aij') # sparse
-    # A_.setValue(A)
-    # A_.assemblyBegin()
-    # A_.assemblyEnd()
-    # A_.setUp()
-    #
-    # x, b = A_.getVecs()
-    # # set the initial guess to 0
-    # x.set(0.0)
-    # # set the right-hand side to 1
-    # b.set(1.0)
-    #
-    # # Initialize ksp solver.
-    # ksp = PETSc.KSP().create()
-    # ksp.setType('bcgs')
-    # ksp.setOperators(A_)
-    #
-    # # Allow for solver choice to be set from command line with -ksp_type <solver>.
-    # # Recommended option: -ksp_type preonly -pc_type lu
-    # ksp.setFromOptions()
-    # print('Solving with:', ksp.getType())
-    #
-    # t1=time.time()
-    # # Solve!
-    # ksp.solve(b, x)
-    # t2=time.time()
-    # print('%s took %0.3f ms' % ('bicgstab', (t2-t1)*1000.0))
-    # print('norm = %g'%(norm(b - A_*x)))
-
-    # t1=time.time()
-    # (y,flag) = bicgstab_PETSc(A=A,b=b,tol=1e-8,maxiter=100)
-    # t2=time.time()
-    # print('\n%s took %0.3f ms' % ('linalg bicgstab', (t2-t1)*1000.0))
-    # print('norm = %g'%(norm(b - A*y)))
-    # print('info flag = %d'%(flag))
+    print("\n")
+    # PETSc - Test
+    t1=time.time()
+    ksp.solve(b_linalg, x_linalg)
+    t2=time.time()
+    print('\n%s took %0.3f ms' % ('linalg bicgstab', (t2-t1)*1000.0))
+    print('residu absolu = %g'%(norm(b_linalg - A_linalg*x_linalg)/norm(b_linalg)) )
