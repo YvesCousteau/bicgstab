@@ -18,16 +18,49 @@
 
 ![Bi CGSTAB](bicgstab.png)
 
-### <u>**Idées :**</u>
+### <u>**Steps :**</u>
 
-+ Options avec flags
++ Normal Distribution symétriques:
+    Comparer les résultats Self et PETSc
+    Optimiser l'algo self (Préconditionnement)
+    Paralleliser l'algo self
 
-+ Modules disctincts
++ Trouver des cas tests plus compléxe non symétriques
 
-+ Fichier de traitement des données (YAML)
++ Cas tests non symétriques sur les d'autres archi
 
-+ Hiérarchie des fichiers
++ Fichier de traitement des données (YAML) :
+    Scalabilité
+    voir ...
 
+    getResidualNorm(self)
+    getConvergedReason(self)
+    getRhs(self)
+    getSolution(self)
+
+---- test ----
+meca des fluides (double prec)
+computational fluid dynamic
+drivcav
+
+meca des solide
+
+-------- Note ---------
+appel BiCGStab
+=> valider : norm(x_exact - x)/norm(x_exact)<= Cond(A)(norm(b-A*x)/norm(b))
+
+x_my vs x_Petsc === x _exact
+pour les x
+puis pour les iter si diff pourquoi => essayer d'ammeliorer notre méthodes
+
+methode de kry => projection dans l'espace de kry
+
+--------- Note 2 -------------
+
+Matrix Market -> .mtx -> format coo_matrix
+
+invalid value encountered in double_scalars
+-> calcul trop gros
 ----
 
 ### <u>**Hugo Henrote**</u>
