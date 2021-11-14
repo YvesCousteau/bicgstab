@@ -60,7 +60,7 @@ methode de kry => projection dans l'espace de kry
 Matrix Market -> .mtx -> format coo_matrix
 
 invalid value encountered in double_scalars
--> calcul trop gros
+-> calcul trop gros si le nombre de reynolds est trop grand pas la taille de la matrice (100 oui - 200 non)
 ----
 
 ### <u>**Hugo Henrote**</u>

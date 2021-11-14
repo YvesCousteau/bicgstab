@@ -27,7 +27,7 @@ def bcgs(mat_A,mat_b,mat_x,n,tol,it_max):
     # Création du "Right Hand Solution" vecteur b.
     b = mat_b
     # Création de la solution du vecteur x.
-    x = mat_b
+    x = mat_x
     # Initialisations des vecteurs b et x
     for i in range(n):
         b[i] = mat_b[i]
@@ -77,16 +77,26 @@ def petsc(mat_A,mat_b,mat_x,n,tol,it_max):
     ksp.solve(b_petsc,x_petsc)
     t2=time.time()
     ksp.view()
-    residual = A_petsc * x_petsc - b_petsc
+    # Set value in format for residual calcul
+    A = mat_A
+    b = mat_b
+    x = mat_x
+    for i in range(n):
+        b[i] = b_petsc.getValue(i)
+        x[i] = x_petsc.getValue(i)
+        for j in range(n):
+            A[i,j] = A_petsc.getValue(i,j)
+
+    residual = A * x - b
     print('\n%s took %0.3f ms' % ('linalg bicgstab', (t2-t1)*1000.0))
-    print('residu absolu = %g'%(residual.norm()/b_petsc.norm()))
+    print('residu absolu = %g'%(norm(residual)/norm(b)))
     print('iter :',ksp.getIterationNumber())
 
     plt.semilogy(ksp.getConvergenceHistory())
     plt.show()
 # Main - test
 if __name__ == '__main__':
-    path = '06'
+    path = '05'
 
     mat_b = mmread('data_matrix/cavity{}/cavity{}_b.mtx'.format(path,path))
     mat_x = mmread('data_matrix/cavity{}/cavity{}_x.mtx'.format(path,path))
