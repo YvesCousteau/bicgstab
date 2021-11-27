@@ -138,36 +138,34 @@ def bicgstab_solver(A, b, tol, x=None, it_max=None, prec_A=None, callback=None, 
         pass
     pass
 
-def bcgs(mat_A,mat_b,mat_x,n,tol,it_max,cond):
+def bcgs(mat_A,mat_b,mat_x,n,tol,it_max,cond,yaml_data):
     # Self - Initialisations
-    # Le produit d'une matrice par sa transposée est toujours une matrice symétrique
-    A = mat_A
-    for i in range(n):
-        for j in range(n):
-            A[i,j] = mat_A[i,j]
-    # Création du "Right Hand Solution" vecteur b.
-    b = mat_b
     # Création de la solution du vecteur x.
-    x = mat_x
+    x = []
     # Initialisations des vecteurs b et x
     for i in range(n):
-        b[i] = mat_b[i]
-        x[i] = 1
+        x.append(1)
     # Début du test
     print('\nTesting BiCGStab')
     # Self - Test
     t1=time.time()
-    (x,flag,r,iter,conv_history) = bicgstab_solver(A=A,b=b,tol=tol,x=x,it_max=it_max)
+    (x,flag,r,iter,conv_history) = bicgstab_solver(A=mat_A,b=mat_b,tol=tol,x=x,it_max=it_max)
     t2=time.time()
-    residual = np.float128(norm(b - A*x)/norm(b))
-    forward_error = np.float128(norm(mat_x - x)/norm(mat_x))
-    print('\n%s took %0.3f ms' % ('bicgstab', (t2-t1)*1000.0))
-    print('residual relative = %g'%(residual))
-    print('iter :',iter)
-    print('forward error relative :',forward_error)
-    print('backward error relative :',residual)
-    if (forward_error <= cond*residual):
-        print("forward error <= condition * backward error :",cond*residual)
-    else:
-        print("forward error >= condition * backward error :",cond*residual)
+
+    residual = str(np.float128(norm(mat_b - mat_A*x)/norm(mat_b)))
+    forward_error = str(np.float128(norm(mat_x - x)/norm(mat_x)))
+    cond_backward_error = str(np.float128(cond*np.float128((norm(mat_b - mat_A*x)/norm(mat_b)))))
+    yaml_data["algo"] = {
+        "solving time (s)":(t2-t1)*1000.0,
+        'iter':iter,
+        "vector x (norm)":str(norm(x)),
+        'residual relative':residual,
+        "forward error":forward_error,
+        "condition * backward error":cond_backward_error,
+    }
+
+    # if (forward_error <= cond*residual):
+    #     print("forward error <= condition * backward error :",cond*residual)
+    # else:
+    #     print("forward error >= condition * backward error :",cond*residual)
     plt.semilogy(conv_history, label="algo")

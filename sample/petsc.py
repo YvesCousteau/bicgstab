@@ -8,7 +8,7 @@ from petsc4py import PETSc
 import time
 import numpy as np
 
-def petsc(mat_A,mat_b,mat_x,n,tol,it_max,pc,cond):
+def petsc(mat_A,mat_b,mat_x,n,tol,it_max,pc,cond,yaml_data):
     # PETSc - Initialisations
     # Initialisation de la Matrice de systèmes linéaires à résoudre
     A_petsc = PETSc.Mat().createAIJ([n, n],nnz=n*n)
@@ -23,6 +23,7 @@ def petsc(mat_A,mat_b,mat_x,n,tol,it_max,pc,cond):
     # Initialisations des vecteurs b et x
     for i in range(n):
         b_petsc.setValue(i,mat_b[i])
+        x_petsc.setValue(i,1)
     # Initialisation du ksp solver.
 
     ksp = PETSc.KSP().create()
@@ -40,27 +41,22 @@ def petsc(mat_A,mat_b,mat_x,n,tol,it_max,pc,cond):
     ksp.solve(b_petsc,x_petsc)
     t2=time.time()
     ksp.view()
-    # Set value in format for residual calcul
-    A = mat_A
-    b = mat_b
-    x = mat_x
-    for i in range(n):
-        b[i] = b_petsc.getValue(i)
-        x[i] = x_petsc.getValue(i)
-        for j in range(n):
-            A[i,j] = A_petsc.getValue(i,j)
 
-    residual = np.float128(norm(b - A*x)/norm(b))
-    forward_error = np.float128(norm(mat_x - x)/norm(mat_x))
-    print('\n%s took %0.3f ms' % ('linalg bicgstab', (t2-t1)*1000.0))
-    print('residu relative = %g'%(residual))
-    print('iter :',ksp.getIterationNumber())
-    print('forward error relative :',forward_error)
-    print('backward error relative :',residual)
-    if (forward_error <= cond*residual):
-        print("forward error <= condition * backward error")
-    else:
-        print("forward error >= condition * backward error")
+    residual = str(np.float128(norm(mat_b - mat_A*x_petsc)/norm(mat_b)))
+    forward_error = str(np.float128(norm(mat_x - x_petsc)/norm(mat_x)))
+    cond_backward_error = str(np.float128(cond*np.float128((norm(mat_b - mat_A*x_petsc)/norm(mat_b)))))
+    yaml_data["petsc"] = {
+        "solving time (s)":(t2-t1)*1000.0,
+        'iter':ksp.getIterationNumber(),
+        "vector x (norm)":str(norm(x_petsc)),
+        'residual relative':residual,
+        "forward error":forward_error,
+        "condition * backward error":cond_backward_error,
+    }
+    # if (forward_error <= cond*residual):
+    #     print("forward error <= condition * backward error :",cond*residual)
+    # else:
+    #     print("forward error >= condition * backward error :",cond*residual)
     plt.semilogy(ksp.getConvergenceHistory(), label="petsc")
     # plt.show()
     # plt.savefig('./data_matrix/cavity{}/petsc_cavity{}.png'.format(path,path))
