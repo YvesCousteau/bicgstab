@@ -1,0 +1,16 @@
+condition_number: '195177.15171451835'
+matrix A (norm): '8.558424835935748'
+vector b (norm): '3.189132617293179'
+lenght b: 2624
+it max: 2624
+tol: 1.0e-12
+exact:
+  vector x (norm): '18.999541177422685'
+  residual relative: '51.23468395394444741'
+algo:
+  solving time (s): 2149.9783992767334
+  iter: 1014
+  vector x (norm): '18.99954110249958'
+  residual relative: '51.223058388155295'
+  forward error: '29.209172457610418'
+  condition * backward error: '9997570.638306618'

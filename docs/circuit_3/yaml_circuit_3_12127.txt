@@ -1,0 +1,23 @@
+condition_number: '108351664.41752975'
+matrix A (norm): '101.8635296142279'
+vector b (norm): '17.859918839870552'
+lenght b: 12127
+it max: 12127
+tol: 1.0e-12
+exact:
+  vector x (norm): '1276.7826387938126'
+  residual relative: '124.6327319651325638'
+petsc:
+  solving time (s): 3068869.866371155
+  iter: 12127
+  vector x (norm): '1157.460116010095'
+  residual relative: '121.45694548520761'
+  forward error: '160816.45288227874'
+  condition * backward error: '13160062198.39142'
+algo:
+  solving time (s): 121957.78822898865
+  iter: 12127
+  vector x (norm): '1392.0760866937926'
+  residual relative: '122.61804527310557'
+  forward error: '145.68356334228562'
+  condition * backward error: '13285869292.965004'
